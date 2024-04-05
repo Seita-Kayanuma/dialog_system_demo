@@ -59,7 +59,7 @@ class VADCNNAE(nn.Module):
                 output = self.forward(inputs[i][:input_lengths[i]])
                 outs.append(torch.sigmoid(output))            
         return outs
-
+    
     def get_loss(self, probs, targets):
         return self.criterion(probs, targets.float())
 

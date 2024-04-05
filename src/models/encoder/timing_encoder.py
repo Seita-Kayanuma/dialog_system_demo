@@ -321,8 +321,7 @@ class TimingEncoder(nn.Module):
                         try:
                             nxt_nodes.put((-prob_[i], i+100*(bw+1), n))
                         except:
-                            print(prob_[i])
-                            print(aaaaaaaaaa)                            
+                            print(prob_[i])                            
                             
 
                 cur_nodes = nxt_nodes        

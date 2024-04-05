@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.utils.rnn as rnn_utils
 from itertools import chain
-
 from src.models.vad.vad2 import VADCNNAE
 
 torch.autograd.set_detect_anomaly(True)
@@ -17,14 +16,16 @@ class VoiceActivityDetactorCNNAE(nn.Module):
         self.device = device
         self.create_models()
 
+    
     def create_models(self):
         vad = VADCNNAE(
             self.device,
-            self.config.model_params.input_dim,
-            self.config.model_params.hidden_dim,
+            self.config.model_params.vad_input_dim,
+            self.config.model_params.vad_hidden_dim,
         )
         self.vad = vad
 
+    
     def configure_optimizer_parameters(self):
 
         parameters = chain(
@@ -32,6 +33,7 @@ class VoiceActivityDetactorCNNAE(nn.Module):
         )
         return parameters
 
+    
     def forward(self, batch, split='train'):
         """     
         vad_labels = batch[1].to(self.device)
@@ -67,16 +69,17 @@ class VoiceActivityDetactorCNNAE(nn.Module):
             f'{split}_recall': vad_recall,
             f'{split}_f1': vad_f1,
         }
-
         return outputs
     
     def inference(self, batch, split='train'):
         feats = batch[0].to(self.device)
         input_lengths = batch[1]
-        
         batch_size = int(len(feats))
         self.vad.reset_state()
-        
         outputs = torch.sigmoid(self.vad(feats, input_lengths))
-
         return outputs
+    
+    def streaming_inference(self, feats, input_lengths):
+        with torch.no_grad():
+            vad_preds = torch.sigmoid(self.vad(feats, input_lengths))
+        return vad_preds
