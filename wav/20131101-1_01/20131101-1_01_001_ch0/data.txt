@@ -1,8 +1,0 @@
-original.wav 3270
-original_mac.wav 3040
-original_iphone.wav 3230
-original_silence.wav 3270
-original2.wav 12570
-yaguchi_iphone.wav 5370
-yaguchi_mac.wav 3420
-yaguchinoise.wav 3440

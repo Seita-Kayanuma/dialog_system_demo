@@ -1,4 +1,0 @@
-yaguchi_iphone.wav 5370
-yaguchi_iphone2.wav 4450
-yaguchi_iphone3.wav 3220
-yaguchi_iphone4.wav 4180
