@@ -111,12 +111,13 @@ vad_list = [0]
 vad_binary_list = [0]
 dtype = 'int16'
 wav_chunk = np.array([], dtype=dtype)
-t = [i * time_size // n_size for i in range(500)]
+max_x = 50000
+t = [i * time_size // n_size for i in range(max_x // time_size + 1)]
 i = 0
 
 # silence limit
 vad_thres = 0.5
-lim = 50
+lim = 100
 utter_flg = False
 
 # wav 
@@ -135,7 +136,7 @@ stream = sd.InputStream(
 fig, ax = plt.subplots(figsize=(12, 8))
 line_vad, = ax.plot([], [], color='#ff7f00')
 line_pred, = ax.plot([], [], color='b')
-ax.set_xlim(0, 20000)
+ax.set_xlim(0, max_x)
 ax.set_ylim(0, 1)
 ax.axhline(0.5, color='k', linestyle='dashed', lw=1)
 
