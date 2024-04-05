@@ -20,10 +20,8 @@ from espnet2.bin.asr_parallel_transducer_inference import Speech2Text
 # PATH
 ## config
 CONFIG_PATH = 'configs/timing/annotated_timing_baseline_mla_s1234.json'
-
 ## model
 MODEL_PATH = 'exp/annotated/data_-500_2000/timing/baseline_cnnae/jeida_old/cleansnr5snr10snr20/cv0/best_val_loss_model.pth'
-
 ## out
 OUTDIR = 'demo/streaming2/video'
 
