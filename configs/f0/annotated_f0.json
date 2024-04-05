@@ -1,0 +1,18 @@
+{
+    "exp_base": "exp",
+    "exp_name": "annotated/data_-500_2000/f0/spec2_atr",
+    "cuda": true,
+    "seed": 42,
+    "data_params": {
+        "data_dir": "/mnt/aoni04/yaguchi/code/ResponseTimingEstimator_DA/data/ATR_Annotated/data_-500_2000"
+    },
+    "model_params": {
+        "f0_input_dim": 320,
+        "f0_hidden_dim": 512
+    },
+    "optim_params": {
+        "batch_size": 4,
+        "learning_rate": 1e-4
+    },
+    "num_epochs": 15
+}

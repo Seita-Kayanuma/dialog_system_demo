@@ -1,0 +1,25 @@
+{
+    "exp_base": "exp",
+    "exp_name": "annotated/data_-500_2000/vad_and_f0_2",
+    "cuda": true,
+    "seed": 42,
+    "data_loader_workers": 1,
+    "data_params": {
+        "data_dir": "/mnt/aoni04/yaguchi/code/ResponseTimingEstimator_DA/data/ATR_Annotated/data_-500_2000",
+        "text_dir": "/mnt/aoni04/yaguchi/code/ResponseTimingEstimator_DA/data/ATR_Annotated/data_-500_2000/texts/cbs-t_mla_848", 
+        "frame_size": 50,
+        "sampling_rate": 16000,
+        "max_positive_length": 20
+    },
+    "model_params": {
+        "input_dim": 320,
+        "hidden_dim": 512
+    },
+    "optim_params": {
+        "batch_size": 8,
+        "learning_rate": 5e-4
+    },
+    "num_epochs": 15,
+    "validate": true,
+    "is_use_wandb": false
+}

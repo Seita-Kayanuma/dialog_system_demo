@@ -1,0 +1,11 @@
+{
+    "exp_base": "exp",
+    "exp_name": "timing/baseline",
+    "seed": 1234,
+    "cuda": true,
+    "data_dir": "/mnt/aoni04/kayanuma/data/RTE/ATR/data_-500_2000_noise",
+    "output_dir": "/mnt/aoni04/kayanuma/data/RTE/ATR/data_-500_2000_noise/texts/cbs-t_mla_848",
+    "optim_params": {
+        "batch_size": 1
+    }
+}

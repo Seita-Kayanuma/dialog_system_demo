@@ -1,0 +1,30 @@
+{
+    "exp_base": "",
+    "exp_name": "",
+    "cuda": true,
+    "gpu_device": 0,
+    "seed": 1234,
+    "data_loader_workers": 1,
+    "data_params": {
+        "data_dir": "/mnt/aoni04/yaguchi/code/ResponseTimingEstimator_DA/data/ATR_Annotated/data_-500_2000", 
+        "text_dir": "/mnt/aoni04/yaguchi/code/ResponseTimingEstimator_DA/data/ATR_Annotated/data_-500_2000/texts/cbs-t_mla_848",
+        "token_list_path": "/mnt/aoni04/yaguchi/code/ResponseTimingEstimator_DA/data/tokens/char/tokens2.txt",
+        "da_vocab_path": "/mnt/aoni04/yaguchi/code/ResponseTimingEstimator_DA/src/da_list/vocab.txt",
+        "da_dim": 24,
+        "frame_size": 50,
+        "sampling_rate": 16000,
+        "max_positive_length": 20,
+        "asr_decoder_delay": 100,
+        "max_timing": 2000,
+        "min_timing": -500,
+        "n_context": 0
+    },
+    "optim_params": {
+        "batch_size": 1,
+        "learning_rate": 1e-3,
+        "weight_decay": 0.01,
+        "grad_clip": 1,
+        "validate_freq": 5
+    },
+    "num_epochs": 10
+}
