@@ -11,3 +11,8 @@ python demo/streaming/demo.py
 ```
 python demo/realtime/demo.py
 ```
+
+### 音声：リアルタイムで収録した音声、モデル：無音区間検知器
+```
+python demo/silent/demo.py
+```
