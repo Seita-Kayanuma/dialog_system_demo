@@ -2,6 +2,7 @@ import os
 import torch
 import random
 import numpy as np
+import soundfile as sf
 import sounddevice as sd
 import matplotlib.pyplot as plt
 import sflib.sound.sigproc.spec_image as spec_image
@@ -13,7 +14,7 @@ from src.models.vad.model_vad2 import VoiceActivityDetactorCNNAE
 
 # COMMAND
 # /Users/user/desktop/授業/lab/code/ResponseTimingEstimator_demo
-# python demo/silent/demo.py
+# python demo/silent/demo_system.py
 
 
 # PATH
@@ -21,8 +22,8 @@ from src.models.vad.model_vad2 import VoiceActivityDetactorCNNAE
 CONFIG_PATH = 'configs/timing/annotated_timing_baseline_mla_s1234.json'
 ## model
 MODEL_PATH = 'exp/annotated/data_-500_2000/vad/cnnae/best_val_loss_model.pth'
-## out
-OUTDIR = 'demo/streaming2/video'
+## audio
+AUDIO_PATH = 'demo/tts/audio/sample1'
 
 
 ## DEVICE [INPUT, OUTPUT]
@@ -38,15 +39,19 @@ def seed_everything(seed):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
+    
+
+## play audio
+def play_audio(wav_path):
+    sig, sr = sf.read(wav_path, always_2d=True)
+    sd.play(sig, sr)
+
 
 ## recoding
 def callback(indata, frames, time, status):
-    global wav_chunk
+    print(1)
+    global i, audio_num, wav_chunk, chunk_size, vad_list, vad_binary_list, active_flg
     wav_chunk = np.frombuffer(indata[::, 0], dtype=np.int16)
-
-## inference and plot
-def update_plot(frame):
-    global i, t, wav_chunk, chunk_size, vad_list, pred_list, utter_flg
     with torch.no_grad():
         # spectrogram
         if i == 0:
@@ -65,20 +70,33 @@ def update_plot(frame):
     i += 1
     vad_list.extend(*vad_out.tolist())
     vad_binary_list.extend(*vad_binary_out.tolist())
-    if (len(vad_binary_list) >= lim and sum(vad_binary_list[-lim:]) == 0) or utter_flg:
-        pred_list.extend([1 for _ in range(n_size)])
-        utter_flg = True
-    else:
-        pred_list.extend([0 for _ in range(n_size)])
-    line_vad.set_data(t[:len(vad_list)], vad_list)
-    line_pred.set_data(t[:len(pred_list)], pred_list)
-    return line_vad, line_pred
+    print(vad_list[-1])
+    
+    if len(vad_binary_list) >= lim and sum(vad_binary_list[-lim:]) == 0:
+        print(2)
+        # 発話
+        play_audio(os.path.join(AUDIO_PATH, audio_list[audio_num]))
+        sd.wait()
+        audio_num += 1
+        print(audio_num, len(audio_list))
+        if audio_num >= len(audio_list):
+            sd.stop()
+            active = False
+        # 初期化
+        i = 0
+        vad_list = []
+        vad_binary_list = []
+        generator.reset()
+        model.vad.reset_state()
 
 
 
 # setting
 ## seed
 seed_everything(42)
+## aduio
+audio_list = [audio for audio in os.listdir(AUDIO_PATH) if 'wav' in audio]
+audio_list.sort()
 ## spectrogram
 generator = spec_image.SpectrogramImageGenerator(
     framesize=800, 
@@ -106,7 +124,6 @@ chunk_size = 800                # 50[ms]ごと
 time_size = chunk_size // 16
 n_size = time_size // 50
 single = False
-pred_list = [0]
 vad_list = [0]
 vad_binary_list = [0]
 dtype = 'int16'
@@ -114,11 +131,11 @@ wav_chunk = np.array([], dtype=dtype)
 max_x = 50000
 t = [i * time_size // n_size for i in range(max_x // time_size + 1)]
 i = 0
+audio_num = 0
 
 # silence limit
 vad_thres = 0.5
-lim = 100
-utter_flg = False
+lim = 14            # 700[ms]
 
 # wav 
 CHANNELS = 1                    # モノラル
@@ -129,18 +146,11 @@ stream = sd.InputStream(
         dtype=dtype,
         callback=callback,
         samplerate=RATE,
-        blocksize=chunk_size
+        blocksize=chunk_size,
 )
-
-# matplotlib
-fig, ax = plt.subplots(figsize=(12, 8))
-line_vad, = ax.plot([], [], color='#ff7f00')
-line_pred, = ax.plot([], [], color='b')
-ax.set_xlim(0, max_x)
-ax.set_ylim(0, 1)
-ax.axhline(0.5, color='k', linestyle='dashed', lw=1)
-
-# animation
-ani = FuncAnimation(fig, update_plot, interval=1, blit=True)
-with stream:
-    plt.show()
+stream.start()
+active_flg = True
+while stream.active and active_flg:
+    pass
+stream.stop()
+stream.close()

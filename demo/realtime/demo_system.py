@@ -2,6 +2,7 @@ import os
 import torch
 import random
 import numpy as np
+import soundfile as sf
 import sounddevice as sd
 import matplotlib.pyplot as plt
 import sflib.sound.sigproc.spec_image as spec_image
@@ -14,7 +15,7 @@ from espnet2.bin.asr_parallel_transducer_inference import Speech2Text
 
 # COMMAND
 # /Users/user/desktop/授業/lab/code/ResponseTimingEstimator_demo
-# python demo/realtime/demo.py
+# python demo/realtime/demo_system.py
 
 
 # PATH
@@ -24,6 +25,8 @@ CONFIG_PATH = 'configs/timing/annotated_timing_baseline_mla_s1234.json'
 MODEL_PATH = 'exp/annotated/data_-500_2000/timing/baseline_cnnae/jeida_old/cleansnr5snr10snr20/cv0/best_val_loss_model.pth'
 ## out
 OUTDIR = 'demo/streaming2/video'
+## audio
+AUDIO_PATH = 'demo/tts/audio/sample1'
 
 ## DEVICE [INPUT, OUTPUT]
 sd.default.device = [1, 2]
@@ -38,6 +41,13 @@ def seed_everything(seed):
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
+
+
+## play audio
+def play_audio(wav_path):
+    sig, sr = sf.read(wav_path, always_2d=True)
+    sd.play(sig, sr)
+
 
 ## asr decoding
 def asr_streaming_decoding(data, is_final=False):
@@ -57,14 +67,11 @@ def asr_streaming_decoding(data, is_final=False):
         token_int = [0]
     return text, token_int
 
+
 ## recoding
 def callback(indata, frames, time, status):
-    global wav_chunk
+    global i, t, audio_num, wav_chunk, chunk_size, pre_text, text, pre_id, token_int, asr_buffer, vad_list, pred_list, active_flg
     wav_chunk = np.frombuffer(indata[::, 0], dtype=np.int16)
-
-## inference and plot
-def update_plot(frame):
-    global i, t, wav_chunk, chunk_size, pre_text, text, pre_id, token_int, asr_buffer, vad_list, pred_list
     with torch.no_grad():
         # ASR
         asr_buffer = np.concatenate([asr_buffer, wav_chunk])
@@ -104,18 +111,32 @@ def update_plot(frame):
         batch = [spec, feat, input_lengths, texts, idxs, indices, 'test']
         out, silence, vad_out = model.streaming_inference(batch, debug=True) 
         out = torch.sigmoid(out)
+        binary_out = (out > thres).int()
     i += 1
     pred_list.extend(*out.tolist())
-    vad_list.extend(*vad_out.tolist())
-    line_vad.set_data(t[:len(vad_list)], vad_list)
-    line_pred.set_data(t[:len(pred_list)], pred_list)
-    return line_vad, line_pred
+    if sum(binary_out) > 0:
+        print(2)
+        # 発話
+        play_audio(os.path.join(AUDIO_PATH, audio_list[audio_num]))
+        sd.wait()
+        audio_num += 1
+        print(audio_num, len(audio_list))
+        if audio_num == len(audio_list):
+            exit()
+        # 初期化
+        i = 0
+        speech2text.reset_inference_cache()
+        generator.reset()
+        model.reset_state()
 
 
 
 # setting
 ## seed
 seed_everything(42)
+## aduio
+audio_list = [audio for audio in os.listdir(AUDIO_PATH) if 'wav' in audio]
+audio_list.sort()
 ## spectrogram
 generator = spec_image.SpectrogramImageGenerator(
     framesize=800, 
@@ -166,8 +187,13 @@ token_int = [0]
 dtype = 'int16'
 wav_chunk = np.array([], dtype=dtype)
 asr_buffer = np.array([], dtype=dtype)
-t = [i * time_size // n_size for i in range(500)]
+max_x = 50000
+t = [i * time_size // n_size for i in range(max_x // time_size + 1)]
 i = 0
+audio_num = 0
+
+# threshold
+thres = 0.5
 
 # wav 
 CHANNELS = 1                    # モノラル
@@ -180,16 +206,9 @@ stream = sd.InputStream(
         samplerate=RATE,
         blocksize=chunk_size
 )
-
-# matplotlib
-fig, ax = plt.subplots(figsize=(12, 8))
-line_vad, = ax.plot([], [], color='#ff7f00')
-line_pred, = ax.plot([], [], color='b')
-ax.set_xlim(0, 10000)
-ax.set_ylim(0, 1)
-ax.axhline(0.5, color='k', linestyle='dashed', lw=1)
-
-# animation
-ani = FuncAnimation(fig, update_plot, interval=1, blit=True)
-with stream:
-    plt.show()
+stream.start()
+active_flg = True
+while stream.active and active_flg:
+    pass
+stream.stop()
+stream.close()
