@@ -3,8 +3,7 @@
 import numpy as np
 import torch
 
-from espnet.nets.ctc_prefix_score import CTCPrefixScore
-from espnet.nets.ctc_prefix_score import CTCPrefixScoreTH
+from espnet.nets.ctc_prefix_score import CTCPrefixScore, CTCPrefixScoreTH
 from espnet.nets.scorer_interface import BatchPartialScorerInterface
 
 
@@ -50,7 +49,7 @@ class CTCPrefixScorer(BatchPartialScorerInterface):
             state: pruned state
 
         """
-        if type(state) == tuple:
+        if type(state) is tuple:
             if len(state) == 2:  # for CTCPrefixScore
                 sc, st = state
                 return sc[i], st[i]

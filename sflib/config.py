@@ -54,7 +54,8 @@ def get(section, name, default=None):
 
 # well known options
 # TOPDIR = get('common', 'topdir')
-TOPDIR = "/Users/user/desktop/授業/lab/code/ResponseTimingEstimator_demo/sflib"
+# TOPDIR = "/Users/user/desktop/授業/lab/code/ResponseTimingEstimator_demo/sflib"
+TOPDIR = "/Users/seita/work/RTE/ResponseTimingEstimator_demo/sflib"
 """
 str:
   | sflibの各種ファイルを保存するためのデータディレクトのトップディレクトリ．

@@ -1,15 +1,9 @@
 import argparse
-from typing import Callable
-from typing import Collection
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Tuple
+from typing import Callable, Collection, Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
-from typeguard import check_argument_types
-from typeguard import check_return_type
+from typeguard import typechecked
 
 from espnet2.asr.encoder.abs_encoder import AbsEncoder
 from espnet2.asr.encoder.conformer_encoder import ConformerEncoder
@@ -38,9 +32,7 @@ from espnet2.train.preprocessor import CommonPreprocessor
 from espnet2.train.trainer import Trainer
 from espnet2.utils.get_default_kwargs import get_default_kwargs
 from espnet2.utils.nested_dict_action import NestedDictAction
-from espnet2.utils.types import int_or_none
-from espnet2.utils.types import str2bool
-from espnet2.utils.types import str_or_none
+from espnet2.utils.types import int_or_none, str2bool, str_or_none
 
 frontend_choices = ClassChoices(
     name="frontend",
@@ -51,6 +43,7 @@ frontend_choices = ClassChoices(
     ),
     type_check=AbsFrontend,
     default="default",
+    optional=True,
 )
 specaug_choices = ClassChoices(
     name="specaug",
@@ -82,7 +75,7 @@ encoder_choices = ClassChoices(
         rnn=RNNEncoder,
     ),
     type_check=AbsEncoder,
-    default="rnn",
+    default="transformer",
 )
 decoder_choices = ClassChoices(
     "decoder",
@@ -180,27 +173,24 @@ class DiarizationTask(AbsTask):
             class_choices.add_arguments(group)
 
     @classmethod
-    def build_collate_fn(
-        cls, args: argparse.Namespace, train: bool
-    ) -> Callable[
+    @typechecked
+    def build_collate_fn(cls, args: argparse.Namespace, train: bool) -> Callable[
         [Collection[Tuple[str, Dict[str, np.ndarray]]]],
         Tuple[List[str], Dict[str, torch.Tensor]],
     ]:
-        assert check_argument_types()
         # NOTE(kamo): int value = 0 is reserved by CTC-blank symbol
         return CommonCollateFn(float_pad_value=0.0, int_pad_value=-1)
 
     @classmethod
+    @typechecked
     def build_preprocess_fn(
         cls, args: argparse.Namespace, train: bool
     ) -> Optional[Callable[[str, Dict[str, np.array]], Dict[str, np.ndarray]]]:
-        assert check_argument_types()
         if args.use_preprocessor:
             # FIXME (jiatong): add more argument here
             retval = CommonPreprocessor(train=train)
         else:
             retval = None
-        assert check_return_type(retval)
         return retval
 
     @classmethod
@@ -220,12 +210,11 @@ class DiarizationTask(AbsTask):
     ) -> Tuple[str, ...]:
         # (Note: jiatong): no optional data names for now
         retval = ()
-        assert check_return_type(retval)
         return retval
 
     @classmethod
+    @typechecked
     def build_model(cls, args: argparse.Namespace) -> ESPnetDiarizationModel:
-        assert check_argument_types()
 
         # 1. frontend
         if args.input_size is None:
@@ -233,6 +222,10 @@ class DiarizationTask(AbsTask):
             frontend_class = frontend_choices.get_class(args.frontend)
             frontend = frontend_class(**args.frontend_conf)
             input_size = frontend.output_size()
+        elif args.input_size is not None and args.frontend is not None:
+            frontend_class = frontend_choices.get_class(args.frontend)
+            frontend = frontend_class(**args.frontend_conf)
+            input_size = args.input_size + frontend.output_size()
         else:
             # Give features from data-loader
             args.frontend = None
@@ -300,5 +293,4 @@ class DiarizationTask(AbsTask):
         if args.init is not None:
             initialize(model, args.init)
 
-        assert check_return_type(model)
         return model

@@ -127,7 +127,7 @@ class FeatureExtractor(nn.Module):
         # r_f0, f0_value = self.f0_encoder.inference(specs, input_lengths)
         
         if debug: r_t, silence, vad_preds = r_t
-        # embs = torch.cat([r_s, r_t], dim=-1)
+        # embs = torch.cat([r_a, r_t], dim=-1)
         embs = torch.cat([r_s, r_a, r_t], dim=-1)
         # embs = torch.cat([r_s, r_t, r_f0], dim=-1)
         # embs = torch.cat([r_s, r_t, feats], dim=-1)

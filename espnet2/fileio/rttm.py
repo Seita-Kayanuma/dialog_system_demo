@@ -1,22 +1,19 @@
 import collections.abc
+import re
 from pathlib import Path
-from typing import Dict
-from typing import List
-from typing import Tuple
-from typing import Union
+from typing import Dict, List, Tuple, Union
 
 import numpy as np
-import re
-from typeguard import check_argument_types
+from typeguard import typechecked
 
 
+@typechecked
 def load_rttm_text(path: Union[Path, str]) -> Dict[str, List[Tuple[str, float, float]]]:
     """Read a RTTM file
 
     Note: only support speaker information now
     """
 
-    assert check_argument_types()
     data = {}
     with Path(path).open("r", encoding="utf-8") as f:
         for linenum, line in enumerate(f, 1):
@@ -68,11 +65,11 @@ class RttmReader(collections.abc.Mapping):
 
     """
 
+    @typechecked
     def __init__(
         self,
         fname: str,
     ):
-        assert check_argument_types()
         super().__init__()
 
         self.fname = fname

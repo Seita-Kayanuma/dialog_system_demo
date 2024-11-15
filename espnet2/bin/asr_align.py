@@ -5,33 +5,31 @@
 
 import argparse
 import logging
-from pathlib import Path
 import sys
-from typing import Optional
-from typing import TextIO
-from typing import Union
+from pathlib import Path
+from typing import List, Optional, TextIO, Union
 
 import numpy as np
 import soundfile
 import torch
-from typeguard import check_argument_types
-from typeguard import check_return_type
-from typing import List
 
-# imports for inference
-from espnet.utils.cli_utils import get_commandline_args
+# imports for CTC segmentation
+from ctc_segmentation import (
+    CtcSegmentationParameters,
+    ctc_segmentation,
+    determine_utterance_segments,
+    prepare_text,
+    prepare_token_list,
+)
+from typeguard import typechecked
+
 from espnet2.tasks.asr import ASRTask
 from espnet2.torch_utils.device_funcs import to_device
 from espnet2.utils import config_argparse
-from espnet2.utils.types import str2bool
-from espnet2.utils.types import str_or_none
+from espnet2.utils.types import str2bool, str_or_none
 
-# imports for CTC segmentation
-from ctc_segmentation import ctc_segmentation
-from ctc_segmentation import CtcSegmentationParameters
-from ctc_segmentation import determine_utterance_segments
-from ctc_segmentation import prepare_text
-from ctc_segmentation import prepare_token_list
+# imports for inference
+from espnet.utils.cli_utils import get_commandline_args
 
 
 class CTCSegmentationTask:
@@ -175,10 +173,11 @@ class CTCSegmentation:
     warned_about_misconfiguration = False
     config = CtcSegmentationParameters()
 
+    @typechecked
     def __init__(
         self,
         asr_train_config: Union[Path, str],
-        asr_model_file: Union[Path, str] = None,
+        asr_model_file: Union[Path, str, None] = None,
         fs: int = 16000,
         ngpu: int = 0,
         batch_size: int = 1,
@@ -219,7 +218,6 @@ class CTCSegmentation:
                 longer audio files: "auto".
             **ctc_segmentation_args: Parameters for CTC segmentation.
         """
-        assert check_argument_types()
 
         # Basic settings
         if batch_size > 1:
@@ -533,6 +531,7 @@ class CTCSegmentation:
         return task
 
     @staticmethod
+    @typechecked
     def get_segments(task: CTCSegmentationTask):
         """Obtain segments for given utterance texts and CTC log posteriors.
 
@@ -544,7 +543,6 @@ class CTCSegmentation:
             result: Dictionary with alignments. Combine this with the task
                 object to obtain a human-readable segments representation.
         """
-        assert check_argument_types()
         assert task.config is not None
         config = task.config
         lpz = task.lpz
@@ -570,6 +568,7 @@ class CTCSegmentation:
         }
         return result
 
+    @typechecked
     def __call__(
         self,
         speech: Union[torch.Tensor, np.ndarray],
@@ -589,7 +588,6 @@ class CTCSegmentation:
         Returns:
             CTCSegmentationTask object with segments.
         """
-        assert check_argument_types()
         if fs is not None:
             self.set_config(fs=fs)
         # Get log CTC posterior probabilities
@@ -599,10 +597,10 @@ class CTCSegmentation:
         # Apply CTC segmentation
         segments = self.get_segments(task)
         task.set(**segments)
-        assert check_return_type(task)
         return task
 
 
+@typechecked
 def ctc_align(
     log_level: Union[int, str],
     asr_train_config: str,
@@ -615,7 +613,6 @@ def ctc_align(
     **kwargs,
 ):
     """Provide the scripting interface to align text to audio."""
-    assert check_argument_types()
     logging.basicConfig(
         level=log_level,
         format="%(asctime)s (%(module)s:%(lineno)d) %(levelname)s: %(message)s",

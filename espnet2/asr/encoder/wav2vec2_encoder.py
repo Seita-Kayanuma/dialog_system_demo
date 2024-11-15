@@ -4,18 +4,17 @@
 """Encoder definition."""
 import contextlib
 import copy
-from filelock import FileLock
 import logging
 import os
-from typing import Optional
-from typing import Tuple
+from typing import Optional, Tuple
 
 import torch
-from typeguard import check_argument_types
+from filelock import FileLock
+from typeguard import typechecked
 
+from espnet2.asr.encoder.abs_encoder import AbsEncoder
 from espnet.nets.pytorch_backend.nets_utils import make_pad_mask
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
-from espnet2.asr.encoder.abs_encoder import AbsEncoder
 
 
 class FairSeqWav2Vec2Encoder(AbsEncoder):
@@ -31,6 +30,7 @@ class FairSeqWav2Vec2Encoder(AbsEncoder):
                                 0 means to finetune every layer if freeze_w2v=False.
     """
 
+    @typechecked
     def __init__(
         self,
         input_size: int,
@@ -40,7 +40,6 @@ class FairSeqWav2Vec2Encoder(AbsEncoder):
         normalize_before: bool = False,
         freeze_finetune_updates: int = 0,
     ):
-        assert check_argument_types()
         super().__init__()
 
         if w2v_url != "":
@@ -124,6 +123,7 @@ class FairSeqWav2Vec2Encoder(AbsEncoder):
             enc_outputs = self.encoders(
                 xs_pad,
                 masks,
+                mask=self.training,
                 features_only=True,
             )
 

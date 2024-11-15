@@ -2,24 +2,16 @@
 import argparse
 import datetime
 import logging
-from pathlib import Path
 import sys
-from typing import Any
-from typing import Dict
-from typing import Optional
-from typing import Sequence
-from typing import Tuple
-from typing import Union
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import k2
 import numpy as np
 import torch
-from typeguard import check_argument_types
-from typeguard import check_return_type
-from typing import List
 import yaml
+from typeguard import typechecked
 
-from espnet.utils.cli_utils import get_commandline_args
 from espnet2.fileio.datadir_writer import DatadirWriter
 from espnet2.fst.lm_rescore import nbest_am_lm_scores
 from espnet2.tasks.asr import ASRTask
@@ -29,9 +21,8 @@ from espnet2.text.token_id_converter import TokenIDConverter
 from espnet2.torch_utils.device_funcs import to_device
 from espnet2.torch_utils.set_all_random_seed import set_all_random_seed
 from espnet2.utils import config_argparse
-from espnet2.utils.types import str2bool
-from espnet2.utils.types import str2triple_str
-from espnet2.utils.types import str_or_none
+from espnet2.utils.types import str2bool, str2triple_str, str_or_none
+from espnet.utils.cli_utils import get_commandline_args
 
 
 def indices_to_split_size(indices, total_elements: int = None):
@@ -136,14 +127,15 @@ class k2Speech2Text:
 
     """
 
+    @typechecked
     def __init__(
         self,
         asr_train_config: Union[Path, str],
-        asr_model_file: Union[Path, str] = None,
-        lm_train_config: Union[Path, str] = None,
-        lm_file: Union[Path, str] = None,
-        token_type: str = None,
-        bpemodel: str = None,
+        asr_model_file: Union[Path, str, None] = None,
+        lm_train_config: Union[Path, str, None] = None,
+        lm_file: Union[Path, str, None] = None,
+        token_type: Optional[str] = None,
+        bpemodel: Optional[str] = None,
         device: str = "cpu",
         maxlenratio: float = 0.0,
         minlenratio: float = 0.0,
@@ -172,7 +164,6 @@ class k2Speech2Text:
         nbest_batch_size: int = 500,
         nll_batch_size: int = 100,
     ):
-        assert check_argument_types()
 
         # 1. Build ASR model
         asr_model, asr_train_args = ASRTask.build_model_from_file(
@@ -238,6 +229,7 @@ class k2Speech2Text:
         self.nll_batch_size = nll_batch_size
 
     @torch.no_grad()
+    @typechecked
     def __call__(
         self, batch: Dict[str, Union[torch.Tensor, np.ndarray]]
     ) -> List[Tuple[Optional[str], List[str], List[int], float]]:
@@ -249,7 +241,6 @@ class k2Speech2Text:
             text, token, token_int, hyp
 
         """
-        assert check_argument_types()
 
         if isinstance(batch["speech"], np.ndarray):
             batch["speech"] = torch.tensor(batch["speech"])
@@ -427,7 +418,6 @@ class k2Speech2Text:
             text = self.tokenizer.tokens2text(token)
             results.append((text, token, token_int, score))
 
-        assert check_return_type(results)
         return results
 
     @staticmethod
@@ -461,6 +451,7 @@ class k2Speech2Text:
         return k2Speech2Text(**kwargs)
 
 
+@typechecked
 def inference(
     output_dir: str,
     maxlenratio: float,
@@ -497,7 +488,6 @@ def inference(
     k2_config: Optional[str],
 ):
     assert is_ctc_decoding, "Currently, only ctc_decoding graph is supported."
-    assert check_argument_types()
     if ngpu > 1:
         raise NotImplementedError("only single GPU decoding is supported")
 

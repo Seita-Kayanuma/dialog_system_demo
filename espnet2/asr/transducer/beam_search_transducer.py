@@ -1,23 +1,21 @@
 """Search algorithms for Transducer models."""
 
+import logging
 from dataclasses import dataclass
-from typing import Any
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Tuple
-from typing import Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import torch
 
-from espnet.nets.pytorch_backend.transducer.utils import is_prefix
-from espnet.nets.pytorch_backend.transducer.utils import recombine_hyps
-from espnet.nets.pytorch_backend.transducer.utils import select_k_expansions
-from espnet.nets.pytorch_backend.transducer.utils import subtract
-
 from espnet2.asr.decoder.abs_decoder import AbsDecoder
-from espnet2.asr.transducer.joint_network import JointNetwork
+from espnet2.asr_transducer.joint_network import JointNetwork
+from espnet2.lm.transformer_lm import TransformerLM
+from espnet.nets.pytorch_backend.transducer.utils import (
+    is_prefix,
+    recombine_hyps,
+    select_k_expansions,
+    subtract,
+)
 
 
 @dataclass
@@ -59,8 +57,12 @@ class BeamSearchTransducer:
         prefix_alpha: int = 1,
         expansion_gamma: int = 2.3,
         expansion_beta: int = 2,
+        multi_blank_durations: List[int] = [],
+        multi_blank_indices: List[int] = [],
         score_norm: bool = True,
+        score_norm_during: bool = False,
         nbest: int = 1,
+        token_list: Optional[List[str]] = None,
     ):
         """Initialize Transducer search module.
 
@@ -78,7 +80,11 @@ class BeamSearchTransducer:
             expansion_beta:
               Number of additional candidates for expanded hypotheses selection. (mAES)
             expansion_gamma: Allowed logp difference for prune-by-value method. (mAES)
+            multi_blank_durations: The duration of each blank token. (MBG)
+            multi_blank_indices: The index of each blank token in token_list. (MBG)
             score_norm: Normalize final scores by length. ("default")
+            score_norm_during:
+              Normalize scores by length during search. (default, TSD, ALSD)
             nbest: Number of final hypothesis.
 
         """
@@ -89,32 +95,60 @@ class BeamSearchTransducer:
         self.hidden_size = decoder.dunits
         self.vocab_size = decoder.odim
 
+        self.sos = self.vocab_size - 1
+        self.token_list = token_list
+
         self.blank_id = decoder.blank_id
 
-        if self.beam_size <= 1:
+        if search_type == "mbg":
+            self.beam_size = 1
+            self.multi_blank_durations = multi_blank_durations
+            self.multi_blank_indices = multi_blank_indices
+            self.search_algorithm = self.multi_blank_greedy_search
+
+        elif self.beam_size <= 1:
             self.search_algorithm = self.greedy_search
         elif search_type == "default":
             self.search_algorithm = self.default_beam_search
         elif search_type == "tsd":
+            if isinstance(lm, TransformerLM):
+                raise NotImplementedError
+
             self.max_sym_exp = max_sym_exp
 
             self.search_algorithm = self.time_sync_decoding
         elif search_type == "alsd":
+            if isinstance(lm, TransformerLM):
+                raise NotImplementedError
+
             self.u_max = u_max
 
             self.search_algorithm = self.align_length_sync_decoding
         elif search_type == "nsc":
+            if isinstance(lm, TransformerLM):
+                raise NotImplementedError
+
             self.nstep = nstep
             self.prefix_alpha = prefix_alpha
 
             self.search_algorithm = self.nsc_beam_search
         elif search_type == "maes":
+            if isinstance(lm, TransformerLM):
+                raise NotImplementedError
+
             self.nstep = nstep if nstep > 1 else 2
             self.prefix_alpha = prefix_alpha
             self.expansion_gamma = expansion_gamma
-            self.expansion_beta = expansion_beta
+
+            assert self.vocab_size >= beam_size + expansion_beta, (
+                "beam_size (%d) + expansion_beta (%d) "
+                "should be smaller or equal to vocabulary size (%d)."
+                % (beam_size, expansion_beta, self.vocab_size)
+            )
+            self.max_candidates = beam_size + expansion_beta
 
             self.search_algorithm = self.modified_adaptive_expansion_search
+
         else:
             raise NotImplementedError
 
@@ -122,7 +156,11 @@ class BeamSearchTransducer:
         self.lm = lm
         self.lm_weight = lm_weight
 
+        if self.use_lm and self.beam_size == 1:
+            logging.warning("LM is provided but not used, since this is greedy search.")
+
         self.score_norm = score_norm
+        self.score_norm_during = score_norm_during
         self.nbest = nbest
 
     def __call__(
@@ -251,13 +289,30 @@ class BeamSearchTransducer:
 
         kept_hyps = [Hypothesis(score=0.0, yseq=[self.blank_id], dec_state=dec_state)]
         cache = {}
+        cache_lm = {}
 
         for enc_out_t in enc_out:
             hyps = kept_hyps
             kept_hyps = []
 
+            if self.token_list is not None:
+                logging.debug(
+                    "\n"
+                    + "\n".join(
+                        [
+                            "hypo: "
+                            + "".join([self.token_list[x] for x in hyp.yseq[1:]])
+                            + f", score: {round(float(hyp.score), 2)}"
+                            for hyp in sorted(hyps, key=lambda x: x.score, reverse=True)
+                        ]
+                    )
+                )
+
             while True:
-                max_hyp = max(hyps, key=lambda x: x.score)
+                if self.score_norm_during:
+                    max_hyp = max(hyps, key=lambda x: x.score / len(x.yseq))
+                else:
+                    max_hyp = max(hyps, key=lambda x: x.score)
                 hyps.remove(max_hyp)
 
                 dec_out, state, lm_tokens = self.decoder.score(max_hyp, cache)
@@ -278,9 +333,18 @@ class BeamSearchTransducer:
                 )
 
                 if self.use_lm:
-                    lm_scores, lm_state = self.lm.score(
-                        lm_tokens, max_hyp.lm_state, None
-                    )
+                    if tuple(max_hyp.yseq) not in cache_lm:
+                        lm_scores, lm_state = self.lm.score(
+                            torch.LongTensor(
+                                [self.sos] + max_hyp.yseq[1:],
+                                device=self.decoder.device,
+                            ),
+                            max_hyp.lm_state,
+                            None,
+                        )
+                        cache_lm[tuple(max_hyp.yseq)] = (lm_scores, lm_state)
+                    else:
+                        lm_scores, lm_state = cache_lm[tuple(max_hyp.yseq)]
                 else:
                     lm_state = max_hyp.lm_state
 
@@ -299,7 +363,12 @@ class BeamSearchTransducer:
                         )
                     )
 
-                hyps_max = float(max(hyps, key=lambda x: x.score).score)
+                if self.score_norm_during:
+                    hyps_max = float(
+                        max(hyps, key=lambda x: x.score / len(x.yseq)).score
+                    )
+                else:
+                    hyps_max = float(max(hyps, key=lambda x: x.score).score)
                 kept_most_prob = sorted(
                     [hyp for hyp in kept_hyps if hyp.score > hyps_max],
                     key=lambda x: x.score,
@@ -400,9 +469,17 @@ class BeamSearchTransducer:
 
                             D.append(new_hyp)
 
-                C = sorted(D, key=lambda x: x.score, reverse=True)[:beam]
+                if self.score_norm_during:
+                    C = sorted(D, key=lambda x: x.score / len(x.yseq), reverse=True)[
+                        :beam
+                    ]
+                else:
+                    C = sorted(D, key=lambda x: x.score, reverse=True)[:beam]
 
-            B = sorted(A, key=lambda x: x.score, reverse=True)[:beam]
+            if self.score_norm_during:
+                B = sorted(A, key=lambda x: x.score / len(x.yseq), reverse=True)[:beam]
+            else:
+                B = sorted(A, key=lambda x: x.score, reverse=True)[:beam]
 
         return self.sort_nbest(B)
 
@@ -503,7 +580,12 @@ class BeamSearchTransducer:
 
                         A.append(new_hyp)
 
-                B = sorted(A, key=lambda x: x.score, reverse=True)[:beam]
+                if self.score_norm_during:
+                    B = sorted(A, key=lambda x: x.score / len(x.yseq), reverse=True)[
+                        :beam
+                    ]
+                else:
+                    B = sorted(A, key=lambda x: x.score, reverse=True)[:beam]
                 B = recombine_hyps(B)
 
         if final:
@@ -742,15 +824,21 @@ class BeamSearchTransducer:
             beam_enc_out = enc_out_t.unsqueeze(0)
 
             list_b = []
+            duplication_check = [hyp.yseq for hyp in hyps]
+
             for n in range(self.nstep):
                 beam_dec_out = torch.stack([h.dec_out[-1] for h in hyps])
 
-                beam_logp = torch.log_softmax(
+                beam_logp, beam_idx = torch.log_softmax(
                     self.joint_network(beam_enc_out, beam_dec_out),
                     dim=-1,
-                )
+                ).topk(self.max_candidates, dim=-1)
+
                 k_expansions = select_k_expansions(
-                    hyps, beam_logp, beam, self.expansion_gamma, self.expansion_beta
+                    hyps,
+                    beam_idx,
+                    beam_logp,
+                    self.expansion_gamma,
                 )
 
                 list_exp = []
@@ -768,14 +856,15 @@ class BeamSearchTransducer:
                         if k == 0:
                             list_b.append(new_hyp)
                         else:
-                            new_hyp.yseq.append(int(k))
+                            if new_hyp.yseq + [int(k)] not in duplication_check:
+                                new_hyp.yseq.append(int(k))
 
-                            if self.use_lm:
-                                new_hyp.score += self.lm_weight * float(
-                                    hyp.lm_scores[k]
-                                )
+                                if self.use_lm:
+                                    new_hyp.score += self.lm_weight * float(
+                                        hyp.lm_scores[k]
+                                    )
 
-                            list_exp.append(new_hyp)
+                                list_exp.append(new_hyp)
 
                 if not list_exp:
                     kept_hyps = sorted(list_b, key=lambda x: x.score, reverse=True)[
@@ -833,3 +922,57 @@ class BeamSearchTransducer:
                         )[:beam]
 
         return self.sort_nbest(kept_hyps)
+
+    def multi_blank_greedy_search(self, enc_out: torch.Tensor) -> List[Hypothesis]:
+        """Greedy Search for Multi-Blank Transducer (Multi-Blank Greedy, MBG).
+
+        In this implementation, we assume:
+        1. the index of standard blank is the last entry of self.multi_blank_indices
+           rather than self.blank_id (to avoid too much change on original transducer)
+        2. other entries in self.multi_blank_indices are big blanks that account for
+           multiple frames.
+
+        Based on https://arxiv.org/abs/2211.03541
+
+        Args:
+            enc_out: Encoder output sequence. (T, D_enc)
+
+        Returns:
+            hyp: 1-best hypothesis.
+
+        """
+
+        big_blank_duration = 1
+        blank_start = self.multi_blank_indices[0]
+        blank_end = self.multi_blank_indices[-1]
+
+        dec_state = self.decoder.init_state(1)
+        hyp = Hypothesis(score=0.0, yseq=[blank_end], dec_state=dec_state)
+        cache = {}
+
+        for enc_out_t in enc_out:
+            # case 1: skip frames until big_blank_duration == 1
+            if big_blank_duration > 1:
+                big_blank_duration -= 1
+                continue
+
+            symbols_added = 0
+            while symbols_added <= 3:
+                dec_out, state, _ = self.decoder.score(hyp, cache)
+                logp = torch.log_softmax(self.joint_network(enc_out_t, dec_out), dim=-1)
+                top_logp, k = torch.max(logp, dim=-1)
+
+                # case 2: predict a blank token
+                if blank_start <= k <= blank_end:
+                    big_blank_duration = self.multi_blank_durations[k - blank_start]
+                    hyp.score += top_logp
+                    break
+
+                # case 3: predict a non-blank token
+                else:
+                    symbols_added += 1
+                    hyp.yseq.append(int(k))
+                    hyp.score += float(top_logp)
+                    hyp.dec_state = state
+
+        return [hyp]

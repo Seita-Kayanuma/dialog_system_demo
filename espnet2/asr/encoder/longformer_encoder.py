@@ -3,36 +3,35 @@
 
 """Conformer encoder definition."""
 
-from typing import List
-from typing import Optional
-from typing import Tuple
+from typing import List, Optional, Tuple
 
 import torch
+from typeguard import typechecked
 
-from typeguard import check_argument_types
-
-from espnet.nets.pytorch_backend.conformer.convolution import ConvolutionModule
-from espnet.nets.pytorch_backend.conformer.encoder_layer import EncoderLayer
-from espnet.nets.pytorch_backend.nets_utils import get_activation
-from espnet.nets.pytorch_backend.nets_utils import make_pad_mask
-from espnet.nets.pytorch_backend.transformer.embedding import (
-    PositionalEncoding,  # noqa: H301
-)
-from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
-from espnet.nets.pytorch_backend.transformer.multi_layer_conv import Conv1dLinear
-from espnet.nets.pytorch_backend.transformer.multi_layer_conv import MultiLayeredConv1d
-from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import (
-    PositionwiseFeedForward,  # noqa: H301
-)
-from espnet.nets.pytorch_backend.transformer.repeat import repeat
-from espnet.nets.pytorch_backend.transformer.subsampling import check_short_utt
-from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling
-from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling2
-from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling6
-from espnet.nets.pytorch_backend.transformer.subsampling import Conv2dSubsampling8
-from espnet.nets.pytorch_backend.transformer.subsampling import TooShortUttError
 from espnet2.asr.ctc import CTC
 from espnet2.asr.encoder.conformer_encoder import ConformerEncoder
+from espnet.nets.pytorch_backend.conformer.convolution import ConvolutionModule
+from espnet.nets.pytorch_backend.conformer.encoder_layer import EncoderLayer
+from espnet.nets.pytorch_backend.nets_utils import get_activation, make_pad_mask
+from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
+from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
+from espnet.nets.pytorch_backend.transformer.multi_layer_conv import (
+    Conv1dLinear,
+    MultiLayeredConv1d,
+)
+from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import (
+    PositionwiseFeedForward,
+)
+from espnet.nets.pytorch_backend.transformer.repeat import repeat
+from espnet.nets.pytorch_backend.transformer.subsampling import (
+    Conv2dSubsampling,
+    Conv2dSubsampling1,
+    Conv2dSubsampling2,
+    Conv2dSubsampling6,
+    Conv2dSubsampling8,
+    TooShortUttError,
+    check_short_utt,
+)
 
 
 class LongformerEncoder(ConformerEncoder):
@@ -78,6 +77,7 @@ class LongformerEncoder(ConformerEncoder):
 
     """
 
+    @typechecked
     def __init__(
         self,
         input_size: int,
@@ -108,7 +108,6 @@ class LongformerEncoder(ConformerEncoder):
         attention_dilation: list = [1, 1, 1, 1, 1, 1],
         attention_mode: str = "sliding_chunks",
     ):
-        assert check_argument_types()
         super().__init__(input_size)
         self._output_size = output_size
 
@@ -155,6 +154,13 @@ class LongformerEncoder(ConformerEncoder):
             )
         elif input_layer == "conv2d":
             self.embed = Conv2dSubsampling(
+                input_size,
+                output_size,
+                dropout_rate,
+                pos_enc_class(output_size, positional_dropout_rate),
+            )
+        elif input_layer == "conv2d1":
+            self.embed = Conv2dSubsampling1(
                 input_size,
                 output_size,
                 dropout_rate,
@@ -228,10 +234,11 @@ class LongformerEncoder(ConformerEncoder):
         self.selfattention_layer_type = selfattention_layer_type
         if selfattention_layer_type == "lf_selfattn":
             assert pos_enc_layer_type == "abs_pos"
-            from espnet.nets.pytorch_backend.transformer.longformer_attention import (
-                LongformerAttention,  # noqa: H301
-            )
             from longformer.longformer import LongformerConfig
+
+            from espnet.nets.pytorch_backend.transformer.longformer_attention import (
+                LongformerAttention,
+            )
 
             encoder_selfattn_layer = LongformerAttention
 
@@ -287,6 +294,7 @@ class LongformerEncoder(ConformerEncoder):
         ilens: torch.Tensor,
         prev_states: torch.Tensor = None,
         ctc: CTC = None,
+        return_all_hs: bool = False,
     ) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
         """Calculate forward propagation.
 
@@ -294,6 +302,8 @@ class LongformerEncoder(ConformerEncoder):
             xs_pad (torch.Tensor): Input tensor (#batch, L, input_size).
             ilens (torch.Tensor): Input length (#batch).
             prev_states (torch.Tensor): Not to be used now.
+            ctc (CTC): ctc module for intermediate CTC loss
+            return_all_hs (bool): whether to return all hidden states
 
         Returns:
             torch.Tensor: Output tensor (#batch, L, output_size).
@@ -305,6 +315,7 @@ class LongformerEncoder(ConformerEncoder):
         masks = (~make_pad_mask(ilens)[:, None, :]).to(xs_pad.device)
         if (
             isinstance(self.embed, Conv2dSubsampling)
+            or isinstance(self.embed, Conv2dSubsampling1)
             or isinstance(self.embed, Conv2dSubsampling2)
             or isinstance(self.embed, Conv2dSubsampling6)
             or isinstance(self.embed, Conv2dSubsampling8)
@@ -334,10 +345,12 @@ class LongformerEncoder(ConformerEncoder):
             )
             masks = torch.nn.functional.pad(masks, (0, padding_len), "constant", False)
 
-        xs_pad, masks = self.encoders(xs_pad, masks)
         intermediate_outs = []
         if len(self.interctc_layer_idx) == 0:
-            xs_pad, masks = self.encoders(xs_pad, masks)
+            for layer_idx, encoder_layer in enumerate(self.encoders):
+                xs_pad, masks = encoder_layer(xs_pad, masks)
+                if return_all_hs:
+                    intermediate_outs.append(xs_pad)
         else:
             for layer_idx, encoder_layer in enumerate(self.encoders):
                 xs_pad, masks = encoder_layer(xs_pad, masks)

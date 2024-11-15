@@ -3,13 +3,12 @@ import argparse
 import logging
 import math
 import sys
-import time
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
-from typeguard import check_argument_types, check_return_type
+from typeguard import typechecked
 
 from espnet2.asr.encoder.contextual_block_conformer_encoder import (  # noqa: H301
     ContextualBlockConformerEncoder,
@@ -17,13 +16,6 @@ from espnet2.asr.encoder.contextual_block_conformer_encoder import (  # noqa: H3
 from espnet2.asr.encoder.contextual_block_transformer_encoder import (  # noqa: H301
     ContextualBlockTransformerEncoder,
 )
-from espnet2.asr.encoder.contextual_block_dual_delay_conformer_encoder import (
-    ContextualBlockDualDelayConformerEncoder,  # noqa: H301
-)
-from espnet2.asr.encoder.contextual_block_dual_delay_conformer_encoder2 import (
-    ContextualBlockDualDelayConformerEncoder2,  # noqa: H301
-)
-
 from espnet2.fileio.datadir_writer import DatadirWriter
 from espnet2.tasks.asr import ASRTask
 from espnet2.tasks.lm import LMTask
@@ -44,25 +36,28 @@ from espnet.utils.cli_utils import get_commandline_args
 
 class Speech2TextStreaming:
     """Speech2TextStreaming class
+
     Details in "Streaming Transformer ASR with Blockwise Synchronous Beam Search"
     (https://arxiv.org/abs/2006.14941)
+
     Examples:
         >>> import soundfile
         >>> speech2text = Speech2TextStreaming("asr_config.yml", "asr.pth")
         >>> audio, rate = soundfile.read("speech.wav")
         >>> speech2text(audio)
         [(text, token, token_int, hypothesis object), ...]
+
     """
 
+    @typechecked
     def __init__(
         self,
-        asr_base_path: str,
         asr_train_config: Union[Path, str],
-        asr_model_file: Union[Path, str] = None,
-        lm_train_config: Union[Path, str] = None,
-        lm_file: Union[Path, str] = None,
-        token_type: str = None,
-        bpemodel: str = None,
+        asr_model_file: Union[Path, str, None] = None,
+        lm_train_config: Union[Path, str, None] = None,
+        lm_file: Union[Path, str, None] = None,
+        token_type: Optional[str] = None,
+        bpemodel: Optional[str] = None,
         device: str = "cpu",
         maxlenratio: float = 0.0,
         minlenratio: float = 0.0,
@@ -72,26 +67,23 @@ class Speech2TextStreaming:
         ctc_weight: float = 0.5,
         lm_weight: float = 1.0,
         penalty: float = 0.0,
-        nbest: int = 1,        
+        nbest: int = 1,
+        normalize_length: bool = False,
         disable_repetition_detection=False,
         decoder_text_length_limit=0,
-        encoded_feat_length_limit=0,        
+        encoded_feat_length_limit=0,
     ):
-        assert check_argument_types()
 
         # 1. Build ASR model
         scorers = {}
         asr_model, asr_train_args = ASRTask.build_model_from_file(
-            asr_base_path, asr_train_config, asr_model_file, device, task_type='asr'
+            asr_train_config, asr_model_file, device
         )
         asr_model.to(dtype=getattr(torch, dtype)).eval()
 
         assert isinstance(
             asr_model.encoder, ContextualBlockTransformerEncoder
-        ) or isinstance(asr_model.encoder, ContextualBlockConformerEncoder
-        ) or isinstance(asr_model.encoder, ContextualBlockDualDelayConformerEncoder
-        ) or isinstance(asr_model.encoder, ContextualBlockDualDelayConformerEncoder2
-        )
+        ) or isinstance(asr_model.encoder, ContextualBlockConformerEncoder)
 
         decoder = asr_model.decoder
         ctc = CTCPrefixScorer(ctc=asr_model.ctc, eos=asr_model.eos)
@@ -105,7 +97,7 @@ class Speech2TextStreaming:
         # 2. Build Language model
         if lm_train_config is not None:
             lm, lm_train_args = LMTask.build_model_from_file(
-                asr_base_path, lm_train_config, lm_file, device, task_type='lm'
+                lm_train_config, lm_file, device
             )
             scorers["lm"] = lm.lm
 
@@ -121,9 +113,9 @@ class Speech2TextStreaming:
         assert "look_ahead" in asr_train_args.encoder_conf
         assert "hop_size" in asr_train_args.encoder_conf
         assert "block_size" in asr_train_args.encoder_conf
-        look_ahead = asr_train_args.encoder_conf['look_ahead']
-        hop_size   = asr_train_args.encoder_conf['hop_size']
-        block_size = asr_train_args.encoder_conf['block_size']
+        # look_ahead = asr_train_args.encoder_conf['look_ahead']
+        # hop_size   = asr_train_args.encoder_conf['hop_size']
+        # block_size = asr_train_args.encoder_conf['block_size']
 
         assert batch_size == 1
 
@@ -136,9 +128,7 @@ class Speech2TextStreaming:
             vocab_size=len(token_list),
             token_list=token_list,
             pre_beam_score_key=None if ctc_weight == 1.0 else "full",
-            block_size=block_size,
-            hop_size=hop_size,
-            look_ahead=look_ahead,
+            normalize_length=normalize_length,
             disable_repetition_detection=disable_repetition_detection,
             decoder_text_length_limit=decoder_text_length_limit,
             encoded_feat_length_limit=encoded_feat_length_limit,
@@ -234,19 +224,18 @@ class Speech2TextStreaming:
             speech_to_process = speech
             waveform_buffer = None
         else:
-            n_frames = (
-                speech.size(0) - (self.win_length - self.hop_length)
-            ) // self.hop_length
-            n_residual = (
-                speech.size(0) - (self.win_length - self.hop_length)
-            ) % self.hop_length
-            speech_to_process = speech.narrow(
-                0, 0, (self.win_length - self.hop_length) + n_frames * self.hop_length
-            )
+            n_frames = speech.size(0) // self.hop_length
+            n_residual = speech.size(0) % self.hop_length
+            speech_to_process = speech.narrow(0, 0, n_frames * self.hop_length)
             waveform_buffer = speech.narrow(
                 0,
-                speech.size(0) - (self.win_length - self.hop_length) - n_residual,
-                (self.win_length - self.hop_length) + n_residual,
+                speech.size(0)
+                - (math.ceil(math.ceil(self.win_length / self.hop_length) / 2) * 2 - 1)
+                * self.hop_length
+                - n_residual,
+                (math.ceil(math.ceil(self.win_length / self.hop_length) / 2) * 2 - 1)
+                * self.hop_length
+                + n_residual,
             ).clone()
 
         # data: (Nsamples,) -> (1, Nsamples)
@@ -302,8 +291,9 @@ class Speech2TextStreaming:
         return feats, feats_lengths, next_states
 
     @torch.no_grad()
+    @typechecked
     def __call__(
-        self, speech: Union[torch.Tensor, np.ndarray], is_final: bool = True, is_print_time: bool = True
+        self, speech: Union[torch.Tensor, np.ndarray], is_final: bool = True
     ) -> List[Tuple[Optional[str], List[str], List[int], Hypothesis]]:
         """Inference
 
@@ -313,47 +303,33 @@ class Speech2TextStreaming:
             text, token, token_int, hyp
 
         """
-        assert check_argument_types()
 
         # Input as audio signal
         if isinstance(speech, np.ndarray):
             speech = torch.tensor(speech)
 
-        start = time.perf_counter()
         feats, feats_lengths, self.frontend_states = self.apply_frontend(
             speech, self.frontend_states, is_final=is_final
         )
-        stop = time.perf_counter()
-        if is_print_time:
-            print('time for feature extraction: {}'.format(stop-start))
-        
-        start = time.perf_counter()
-        enc, _, self.encoder_states = self.asr_model.encoder(
-            feats,
-            feats_lengths,
-            self.encoder_states,
-            is_final=is_final,
-            infer_mode=True,
-        )
-        stop = time.perf_counter()
-        print('time for encode: {}'.format(stop-start))
-        
-        if isinstance(enc, tuple):            
-            enc = enc[0]
-        
-#         logging.warning(f"# enc shape: {enc.shape}")
-        start = time.perf_counter()
-        nbest_hyps, block_idx = self.beam_search(
-            x=enc[0],
-            maxlenratio=self.maxlenratio,
-            minlenratio=self.minlenratio,
-            is_final=is_final,
-        )
-        stop = time.perf_counter()
-        if is_print_time:
-            print('time for search: {}'.format(stop-start))
 
-        ret = self.assemble_hyps(nbest_hyps)
+        if feats is not None:
+            enc, _, self.encoder_states = self.asr_model.encoder(
+                feats,
+                feats_lengths,
+                self.encoder_states,
+                is_final=is_final,
+                infer_mode=True,
+            )
+            nbest_hyps = self.beam_search(
+                x=enc[0],
+                maxlenratio=self.maxlenratio,
+                minlenratio=self.minlenratio,
+                is_final=is_final,
+            )
+            ret = self.assemble_hyps(nbest_hyps)
+        else:
+            ret = []
+
         if is_final:
             self.reset()
         return ret
@@ -379,10 +355,10 @@ class Speech2TextStreaming:
                 text = None
             results.append((text, token, token_int, hyp))
 
-        assert check_return_type(results)
         return results
 
 
+@typechecked
 def inference(
     output_dir: str,
     maxlenratio: float,
@@ -396,6 +372,7 @@ def inference(
     lm_weight: float,
     penalty: float,
     nbest: int,
+    normalize_length: bool,
     num_workers: int,
     log_level: Union[int, str],
     data_path_and_name_and_type: Sequence[Tuple[str, str, str]],
@@ -414,7 +391,6 @@ def inference(
     encoded_feat_length_limit: int,
     decoder_text_length_limit: int,
 ):
-    assert check_argument_types()
     if batch_size > 1:
         raise NotImplementedError("batch decoding is not implemented")
     if word_lm_train_config is not None:
@@ -452,6 +428,7 @@ def inference(
         lm_weight=lm_weight,
         penalty=penalty,
         nbest=nbest,
+        normalize_length=normalize_length,
         disable_repetition_detection=disable_repetition_detection,
         decoder_text_length_limit=decoder_text_length_limit,
         encoded_feat_length_limit=encoded_feat_length_limit,
@@ -641,6 +618,12 @@ def get_parser():
         default=None,
         help="The model path of sentencepiece. "
         "If not given, refers from the training args",
+    )
+    group.add_argument(
+        "--normalize_length",
+        type=str2bool,
+        default=False,
+        help="If true, best hypothesis is selected by length-normalized scores",
     )
 
     return parser

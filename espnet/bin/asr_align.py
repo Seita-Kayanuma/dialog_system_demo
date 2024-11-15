@@ -41,23 +41,26 @@ Selected parameters:
         with the option `--gratis-blank`.
 """
 
-import configargparse
+import json
 import logging
 import os
 import sys
+
+import configargparse
+import torch
+
+# imports for CTC segmentation
+from ctc_segmentation import (
+    CtcSegmentationParameters,
+    ctc_segmentation,
+    determine_utterance_segments,
+    prepare_text,
+)
 
 # imports for inference
 from espnet.asr.pytorch_backend.asr_init import load_trained_model
 from espnet.nets.asr_interface import ASRInterface
 from espnet.utils.io_utils import LoadInputsAndTargets
-import json
-import torch
-
-# imports for CTC segmentation
-from ctc_segmentation import ctc_segmentation
-from ctc_segmentation import CtcSegmentationParameters
-from ctc_segmentation import determine_utterance_segments
-from ctc_segmentation import prepare_text
 
 
 # NOTE: you need this func to generate our sphinx doc
@@ -242,9 +245,11 @@ def ctc_align(args, device):
         mode="asr",
         load_output=True,
         sort_in_input_length=False,
-        preprocess_conf=train_args.preprocess_conf
-        if args.preprocess_conf is None
-        else args.preprocess_conf,
+        preprocess_conf=(
+            train_args.preprocess_conf
+            if args.preprocess_conf is None
+            else args.preprocess_conf
+        ),
         preprocess_args={"train": False},
     )
     logging.info(f"Decoding device={device}")

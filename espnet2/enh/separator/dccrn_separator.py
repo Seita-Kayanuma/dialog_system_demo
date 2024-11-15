@@ -1,22 +1,22 @@
 from collections import OrderedDict
-from distutils.version import LooseVersion
-from typing import List
-from typing import Tuple
-from typing import Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from packaging.version import parse as V
 from torch_complex.tensor import ComplexTensor
 
-from espnet2.enh.layers.complexnn import complex_cat
-from espnet2.enh.layers.complexnn import ComplexBatchNorm
-from espnet2.enh.layers.complexnn import ComplexConv2d
-from espnet2.enh.layers.complexnn import ComplexConvTranspose2d
-from espnet2.enh.layers.complexnn import NavieComplexLSTM
+from espnet2.enh.layers.complexnn import (
+    ComplexBatchNorm,
+    ComplexConv2d,
+    ComplexConvTranspose2d,
+    NavieComplexLSTM,
+    complex_cat,
+)
 from espnet2.enh.separator.abs_separator import AbsSeparator
 
-is_torch_1_9_plus = LooseVersion(torch.__version__) >= LooseVersion("1.9.0")
+is_torch_1_9_plus = V(torch.__version__) >= V("1.9.0")
 EPS = torch.finfo(torch.double).eps
 
 
@@ -57,6 +57,7 @@ class DCCRNSeparator(AbsSeparator):
         self.use_builtin_complex = use_builtin_complex
         self._num_spk = num_spk
         self.use_noise_mask = use_noise_mask
+        self.predict_noise = use_noise_mask
         if masking_mode not in ["C", "E", "R"]:
             raise ValueError("Unsupported masking mode: %s" % masking_mode)
         # Network config
@@ -81,9 +82,11 @@ class DCCRNSeparator(AbsSeparator):
                         stride=(2, 1),
                         padding=(2, 1),
                     ),
-                    nn.BatchNorm2d(self.kernel_num[idx + 1])
-                    if not use_cbn
-                    else ComplexBatchNorm(self.kernel_num[idx + 1]),
+                    (
+                        nn.BatchNorm2d(self.kernel_num[idx + 1])
+                        if not use_cbn
+                        else ComplexBatchNorm(self.kernel_num[idx + 1])
+                    ),
                     nn.PReLU(),
                 )
             )
@@ -97,15 +100,19 @@ class DCCRNSeparator(AbsSeparator):
             for idx in range(rnn_layer):
                 rnns.append(
                     NavieComplexLSTM(
-                        input_size=hidden_dim * self.kernel_num[-1]
-                        if idx == 0
-                        else self.rnn_units * fac,
+                        input_size=(
+                            hidden_dim * self.kernel_num[-1]
+                            if idx == 0
+                            else self.rnn_units * fac
+                        ),
                         hidden_size=self.rnn_units,
                         bidirectional=bidirectional,
                         batch_first=False,
-                        projection_dim=hidden_dim * self.kernel_num[-1]
-                        if idx == rnn_layer - 1
-                        else None,
+                        projection_dim=(
+                            hidden_dim * self.kernel_num[-1]
+                            if idx == rnn_layer - 1
+                            else None
+                        ),
                     )
                 )
                 self.enhance = nn.Sequential(*rnns)
@@ -134,9 +141,11 @@ class DCCRNSeparator(AbsSeparator):
                             padding=(2, 0),
                             output_padding=(1, 0),
                         ),
-                        nn.BatchNorm2d(self.kernel_num[idx - 1])
-                        if not use_cbn
-                        else ComplexBatchNorm(self.kernel_num[idx - 1]),
+                        (
+                            nn.BatchNorm2d(self.kernel_num[idx - 1])
+                            if not use_cbn
+                            else ComplexBatchNorm(self.kernel_num[idx - 1])
+                        ),
                         nn.PReLU(),
                     )
                 )
@@ -145,9 +154,11 @@ class DCCRNSeparator(AbsSeparator):
                     nn.Sequential(
                         ComplexConvTranspose2d(
                             self.kernel_num[idx] * 2,
-                            self.kernel_num[idx - 1] * (self._num_spk + 1)
-                            if self.use_noise_mask
-                            else self.kernel_num[idx - 1] * self._num_spk,
+                            (
+                                self.kernel_num[idx - 1] * (self._num_spk + 1)
+                                if self.use_noise_mask
+                                else self.kernel_num[idx - 1] * self._num_spk
+                            ),
                             kernel_size=(self.kernel_size, 2),
                             stride=(2, 1),
                             padding=(2, 0),
@@ -159,13 +170,18 @@ class DCCRNSeparator(AbsSeparator):
         self.flatten_parameters()
 
     def forward(
-        self, input: Union[torch.Tensor, ComplexTensor], ilens: torch.Tensor
+        self,
+        input: Union[torch.Tensor, ComplexTensor],
+        ilens: torch.Tensor,
+        additional: Optional[Dict] = None,
     ) -> Tuple[List[Union[torch.Tensor, ComplexTensor]], torch.Tensor, OrderedDict]:
         """Forward.
 
         Args:
             input (torch.Tensor or ComplexTensor): Encoded feature [B, T, F]
             ilens (torch.Tensor): input lengths [Batch]
+            additional (Dict or None): other data included in model
+                NOTE: not used in this model
 
         Returns:
             masked (List[Union(torch.Tensor, ComplexTensor)]): [(B, T, F), ...]

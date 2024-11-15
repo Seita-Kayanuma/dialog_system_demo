@@ -1,12 +1,8 @@
-from typing import Any
-from typing import Dict
-from typing import Optional
-from typing import Tuple
-from typing import Union
+from typing import Any, Dict, Optional, Tuple, Union
 
 import humanfriendly
 import torch
-from typeguard import check_argument_types
+from typeguard import typechecked
 
 from espnet2.layers.log_mel import LogMel
 from espnet2.layers.stft import Stft
@@ -19,11 +15,12 @@ class LogMelFbank(AbsFeatsExtract):
     Stft -> amplitude-spec -> Log-Mel-Fbank
     """
 
+    @typechecked
     def __init__(
         self,
         fs: Union[int, str] = 16000,
         n_fft: int = 1024,
-        win_length: int = None,
+        win_length: Optional[int] = None,
         hop_length: int = 256,
         window: Optional[str] = "hann",
         center: bool = True,
@@ -35,7 +32,6 @@ class LogMelFbank(AbsFeatsExtract):
         htk: bool = False,
         log_base: Optional[float] = 10.0,
     ):
-        assert check_argument_types()
         super().__init__()
         if isinstance(fs, str):
             fs = humanfriendly.parse_size(fs)

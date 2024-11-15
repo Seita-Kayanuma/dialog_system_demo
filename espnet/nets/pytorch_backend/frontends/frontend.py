@@ -1,15 +1,12 @@
-from typing import List
-from typing import Optional
-from typing import Tuple
-from typing import Union
+from typing import List, Optional, Tuple, Union
 
 import numpy
 import torch
 import torch.nn as nn
 from torch_complex.tensor import ComplexTensor
 
-from espnet.nets.pytorch_backend.frontends.dnn_beamformer import DNN_Beamformer
-from espnet.nets.pytorch_backend.frontends.dnn_wpe import DNN_WPE
+from espnet2.enh.layers.dnn_beamformer import DNN_Beamformer
+from espnet2.enh.layers.dnn_wpe import DNN_WPE
 
 
 class Frontend(nn.Module):
@@ -77,7 +74,8 @@ class Frontend(nn.Module):
                 bunits=bunits,
                 bprojs=bprojs,
                 blayers=blayers,
-                bnmask=bnmask,
+                num_spk=max(bnmask - 1, 1),
+                use_noise_mask=(bnmask > 1),
                 dropout_rate=bdropout_rate,
                 badim=badim,
                 ref_channel=ref_channel,
@@ -115,7 +113,7 @@ class Frontend(nn.Module):
             # 1. WPE
             if use_wpe:
                 # h: (B, T, C, F) -> h: (B, T, C, F)
-                h, ilens, mask = self.wpe(h, ilens)
+                h, ilens, mask, power = self.wpe(h, ilens)
 
             # 2. Beamformer
             if use_beamformer:

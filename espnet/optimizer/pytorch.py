@@ -1,12 +1,11 @@
 """PyTorch optimizer builders."""
+
 import argparse
 
 import torch
 
 from espnet.optimizer.factory import OptimizerFactoryInterface
-from espnet.optimizer.parser import adadelta
-from espnet.optimizer.parser import adam
-from espnet.optimizer.parser import sgd
+from espnet.optimizer.parser import adadelta, adam, sgd
 
 
 class AdamFactory(OptimizerFactoryInterface):

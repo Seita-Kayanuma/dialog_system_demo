@@ -3,33 +3,32 @@
 
 """Transformer-TTS related modules."""
 
-from typing import Dict
-from typing import Optional
-from typing import Sequence
-from typing import Tuple
+from typing import Dict, Optional, Sequence, Tuple
 
 import torch
 import torch.nn.functional as F
+from typeguard import typechecked
 
-from typeguard import check_argument_types
-
-from espnet.nets.pytorch_backend.e2e_tts_transformer import GuidedMultiHeadAttentionLoss
-from espnet.nets.pytorch_backend.e2e_tts_transformer import TransformerLoss
-from espnet.nets.pytorch_backend.nets_utils import make_non_pad_mask
-from espnet.nets.pytorch_backend.nets_utils import make_pad_mask
+from espnet2.torch_utils.device_funcs import force_gatherable
+from espnet2.torch_utils.initialize import initialize
+from espnet2.tts.abs_tts import AbsTTS
+from espnet2.tts.gst.style_encoder import StyleEncoder
+from espnet.nets.pytorch_backend.e2e_tts_transformer import (
+    GuidedMultiHeadAttentionLoss,
+    TransformerLoss,
+)
+from espnet.nets.pytorch_backend.nets_utils import make_non_pad_mask, make_pad_mask
 from espnet.nets.pytorch_backend.tacotron2.decoder import Postnet
 from espnet.nets.pytorch_backend.tacotron2.decoder import Prenet as DecoderPrenet
 from espnet.nets.pytorch_backend.tacotron2.encoder import Encoder as EncoderPrenet
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.decoder import Decoder
-from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
-from espnet.nets.pytorch_backend.transformer.embedding import ScaledPositionalEncoding
+from espnet.nets.pytorch_backend.transformer.embedding import (
+    PositionalEncoding,
+    ScaledPositionalEncoding,
+)
 from espnet.nets.pytorch_backend.transformer.encoder import Encoder
 from espnet.nets.pytorch_backend.transformer.mask import subsequent_mask
-from espnet2.torch_utils.device_funcs import force_gatherable
-from espnet2.torch_utils.initialize import initialize
-from espnet2.tts.abs_tts import AbsTTS
-from espnet2.tts.gst.style_encoder import StyleEncoder
 
 
 class Transformer(AbsTTS):
@@ -44,6 +43,7 @@ class Transformer(AbsTTS):
 
     """
 
+    @typechecked
     def __init__(
         self,
         # network structure related
@@ -204,7 +204,6 @@ class Transformer(AbsTTS):
             guided_attn_loss_lambda (float): Lambda in guided attention loss.
 
         """
-        assert check_argument_types()
         super().__init__()
 
         # store hyperparameters
@@ -452,7 +451,12 @@ class Transformer(AbsTTS):
             assert olens.ge(
                 self.reduction_factor
             ).all(), "Output length must be greater than or equal to reduction factor."
-            olens_in = olens.new([olen // self.reduction_factor for olen in olens])
+            olens_in = olens.new(
+                [
+                    torch.div(olen, self.reduction_factor, rounding_mode="trunc")
+                    for olen in olens
+                ]
+            )
             olens = olens.new([olen - olen % self.reduction_factor for olen in olens])
             max_olen = max(olens)
             ys = ys[:, :max_olen]
@@ -585,7 +589,12 @@ class Transformer(AbsTTS):
         # (B, T_feats, odim) ->  (B, T_feats//r, odim)
         if self.reduction_factor > 1:
             ys_in = ys[:, self.reduction_factor - 1 :: self.reduction_factor]
-            olens_in = olens.new([olen // self.reduction_factor for olen in olens])
+            olens_in = olens.new(
+                [
+                    torch.div(olen, self.reduction_factor, rounding_mode="trunc")
+                    for olen in olens
+                ]
+            )
         else:
             ys_in, olens_in = ys, olens
 

@@ -1,14 +1,12 @@
-from typing import Any
-from typing import List
-from typing import Tuple
+from typing import Any, List, Tuple
 
 import torch
 import torch.nn as nn
 
+from espnet2.lm.abs_model import AbsLM
 from espnet.nets.pytorch_backend.transformer.embedding import PositionalEncoding
 from espnet.nets.pytorch_backend.transformer.encoder import Encoder
 from espnet.nets.pytorch_backend.transformer.mask import subsequent_mask
-from espnet2.lm.abs_model import AbsLM
 
 
 class TransformerLM(AbsLM):
@@ -21,7 +19,9 @@ class TransformerLM(AbsLM):
         head: int = 2,
         unit: int = 1024,
         layer: int = 4,
-        dropout_rate: float = 0.5,
+        dropout_rate: float = 0.1,
+        positional_dropout_rate: float = 0.1,
+        attention_dropout_rate: float = 0.1,
     ):
         super().__init__()
         if pos_enc == "sinusoidal":
@@ -44,6 +44,8 @@ class TransformerLM(AbsLM):
             dropout_rate=dropout_rate,
             input_layer="linear",
             pos_enc_class=pos_enc_class,
+            positional_dropout_rate=positional_dropout_rate,
+            attention_dropout_rate=attention_dropout_rate,
         )
         self.decoder = nn.Linear(att_unit, vocab_size)
 

@@ -1,13 +1,12 @@
 """Chainer optimizer builders."""
+
 import argparse
 
 import chainer
 from chainer.optimizer_hooks import WeightDecay
 
 from espnet.optimizer.factory import OptimizerFactoryInterface
-from espnet.optimizer.parser import adadelta
-from espnet.optimizer.parser import adam
-from espnet.optimizer.parser import sgd
+from espnet.optimizer.parser import adadelta, adam, sgd
 
 
 class AdamFactory(OptimizerFactoryInterface):

@@ -1,10 +1,6 @@
-from typing import List
-from typing import Sequence
-from typing import Tuple
-from typing import Union
+from typing import List, Optional, Sequence, Tuple, Union
 
-from typeguard import check_argument_types
-from typeguard import check_return_type
+from typeguard import typechecked
 
 from espnet2.samplers.abs_sampler import AbsSampler
 from espnet2.samplers.folded_batch_sampler import FoldedBatchSampler
@@ -12,7 +8,6 @@ from espnet2.samplers.length_batch_sampler import LengthBatchSampler
 from espnet2.samplers.num_elements_batch_sampler import NumElementsBatchSampler
 from espnet2.samplers.sorted_batch_sampler import SortedBatchSampler
 from espnet2.samplers.unsorted_batch_sampler import UnsortedBatchSampler
-
 
 BATCH_TYPES = dict(
     unsorted="UnsortedBatchSampler has nothing in particular feature and "
@@ -74,6 +69,7 @@ BATCH_TYPES = dict(
 )
 
 
+@typechecked
 def build_batch_sampler(
     type: str,
     batch_size: int,
@@ -85,13 +81,15 @@ def build_batch_sampler(
     min_batch_size: int = 1,
     fold_lengths: Sequence[int] = (),
     padding: bool = True,
-    utt2category_file: str = None,
+    utt2category_file: Optional[str] = None,
 ) -> AbsSampler:
     """Helper function to instantiate BatchSampler.
 
     Args:
-        type: mini-batch type. "unsorted", "sorted", "folded", "numel", or, "length"
-        batch_size: The mini-batch size. Used for "unsorted", "sorted", "folded" mode
+        type: mini-batch type. "unsorted", "sorted", "folded", "numel",
+            "length", or "catbel"
+        batch_size: The mini-batch size. Used for "unsorted", "sorted",
+            "folded", "catbel" mode
         batch_bins: Used for "numel" model
         shape_files: Text files describing the length and dimension
             of each features. e.g. uttA 1330,80
@@ -103,7 +101,6 @@ def build_batch_sampler(
         padding: Whether sequences are input as a padded tensor or not.
             used for "numel" mode
     """
-    assert check_argument_types()
     if len(shape_files) == 0:
         raise ValueError("No shape file are given")
 
@@ -163,5 +160,4 @@ def build_batch_sampler(
 
     else:
         raise ValueError(f"Not supported: {type}")
-    assert check_return_type(retval)
     return retval

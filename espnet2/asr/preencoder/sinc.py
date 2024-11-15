@@ -5,15 +5,14 @@
 """Sinc convolutions for raw audio input."""
 
 from collections import OrderedDict
-from espnet2.asr.preencoder.abs_preencoder import AbsPreEncoder
-from espnet2.layers.sinc_conv import LogCompression
-from espnet2.layers.sinc_conv import SincConv
+from typing import Optional, Tuple, Union
+
 import humanfriendly
 import torch
-from typeguard import check_argument_types
-from typing import Optional
-from typing import Tuple
-from typing import Union
+from typeguard import typechecked
+
+from espnet2.asr.preencoder.abs_preencoder import AbsPreEncoder
+from espnet2.layers.sinc_conv import LogCompression, SincConv
 
 
 class LightweightSincConvs(AbsPreEncoder):
@@ -39,6 +38,7 @@ class LightweightSincConvs(AbsPreEncoder):
     Use `plot_sinc_filters.py` to visualize the learned Sinc filters.
     """
 
+    @typechecked
     def __init__(
         self,
         fs: Union[int, str, float] = 16000,
@@ -60,7 +60,6 @@ class LightweightSincConvs(AbsPreEncoder):
             windowing_type: Choice of windowing function.
             scale_type:  Choice of filter-bank initialization scale.
         """
-        assert check_argument_types()
         super().__init__()
         if isinstance(fs, str):
             fs = humanfriendly.parse_size(fs)
@@ -215,7 +214,7 @@ class LightweightSincConvs(AbsPreEncoder):
         self.filters.init_filters()
         for block in self.blocks:
             for layer in block:
-                if type(layer) == torch.nn.BatchNorm1d and layer.affine:
+                if type(layer) is torch.nn.BatchNorm1d and layer.affine:
                     layer.weight.data[:] = 1.0
                     layer.bias.data[:] = 0.0
 
@@ -257,6 +256,7 @@ class SpatialDropout(torch.nn.Module):
     Apply dropout to full channels on tensors of input (B, C, D)
     """
 
+    @typechecked
     def __init__(
         self,
         dropout_probability: float = 0.15,
@@ -268,7 +268,6 @@ class SpatialDropout(torch.nn.Module):
             dropout_probability: Dropout probability.
             shape (tuple, list): Shape of input tensors.
         """
-        assert check_argument_types()
         super().__init__()
         if shape is None:
             shape = (0, 2, 1)

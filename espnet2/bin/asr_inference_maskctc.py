@@ -1,23 +1,14 @@
 #!/usr/bin/env python3
 import argparse
 import logging
-from pathlib import Path
 import sys
-from typing import Any
-from typing import Optional
-from typing import Sequence
-from typing import Tuple
-from typing import Union
+from pathlib import Path
+from typing import Any, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import torch
-from typeguard import check_argument_types
-from typeguard import check_return_type
-from typing import List
+from typeguard import typechecked
 
-from espnet.nets.beam_search import Hypothesis
-from espnet.nets.pytorch_backend.transformer.subsampling import TooShortUttError
-from espnet.utils.cli_utils import get_commandline_args
 from espnet2.asr.maskctc_model import MaskCTCInference
 from espnet2.fileio.datadir_writer import DatadirWriter
 from espnet2.tasks.asr import ASRTask
@@ -26,9 +17,10 @@ from espnet2.text.token_id_converter import TokenIDConverter
 from espnet2.torch_utils.device_funcs import to_device
 from espnet2.torch_utils.set_all_random_seed import set_all_random_seed
 from espnet2.utils import config_argparse
-from espnet2.utils.types import str2bool
-from espnet2.utils.types import str2triple_str
-from espnet2.utils.types import str_or_none
+from espnet2.utils.types import str2bool, str2triple_str, str_or_none
+from espnet.nets.beam_search import Hypothesis
+from espnet.nets.pytorch_backend.transformer.subsampling import TooShortUttError
+from espnet.utils.cli_utils import get_commandline_args
 
 
 class Speech2Text:
@@ -43,19 +35,19 @@ class Speech2Text:
 
     """
 
+    @typechecked
     def __init__(
         self,
         asr_train_config: Union[Path, str],
-        asr_model_file: Union[Path, str] = None,
-        token_type: str = None,
-        bpemodel: str = None,
+        asr_model_file: Union[Path, str, None] = None,
+        token_type: Optional[str] = None,
+        bpemodel: Optional[str] = None,
         device: str = "cpu",
         batch_size: int = 1,
         dtype: str = "float32",
         maskctc_n_iterations: int = 10,
         maskctc_threshold_probability: float = 0.99,
     ):
-        assert check_argument_types()
 
         # 1. Build ASR model
         asr_model, asr_train_args = ASRTask.build_model_from_file(
@@ -98,6 +90,7 @@ class Speech2Text:
         self.dtype = dtype
 
     @torch.no_grad()
+    @typechecked
     def __call__(
         self, speech: Union[torch.Tensor, np.ndarray]
     ) -> List[Tuple[Optional[str], List[str], List[int], Hypothesis]]:
@@ -109,7 +102,6 @@ class Speech2Text:
             text, token, token_int, hyp
 
         """
-        assert check_argument_types()
 
         # Input as audio signal
         if isinstance(speech, np.ndarray):
@@ -149,7 +141,6 @@ class Speech2Text:
             text = None
         results = [(text, token, token_int, hyp)]
 
-        assert check_return_type(results)
         return results
 
     @staticmethod
@@ -183,6 +174,7 @@ class Speech2Text:
         return Speech2Text(**kwargs)
 
 
+@typechecked
 def inference(
     output_dir: str,
     batch_size: int,
@@ -202,7 +194,6 @@ def inference(
     maskctc_n_iterations: int,
     maskctc_threshold_probability: float,
 ):
-    assert check_argument_types()
     if batch_size > 1:
         raise NotImplementedError("batch decoding is not implemented")
     if ngpu > 1:

@@ -4,14 +4,11 @@
 """GAN-based text-to-speech ESPnet model."""
 
 from contextlib import contextmanager
-from distutils.version import LooseVersion
-from typing import Any
-from typing import Dict
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import torch
-
-from typeguard import check_argument_types
+from packaging.version import parse as V
+from typeguard import typechecked
 
 from espnet2.gan_tts.abs_gan_tts import AbsGANTTS
 from espnet2.layers.abs_normalize import AbsNormalize
@@ -19,7 +16,7 @@ from espnet2.layers.inversible_interface import InversibleInterface
 from espnet2.train.abs_gan_espnet_model import AbsGANESPnetModel
 from espnet2.tts.feats_extract.abs_feats_extract import AbsFeatsExtract
 
-if LooseVersion(torch.__version__) >= LooseVersion("1.6.0"):
+if V(torch.__version__) >= V("1.6.0"):
     from torch.cuda.amp import autocast
 else:
     # Nothing to do if torch < 1.6.0
@@ -31,6 +28,7 @@ else:
 class ESPnetGANTTSModel(AbsGANESPnetModel):
     """ESPnet model for GAN-based text-to-speech task."""
 
+    @typechecked
     def __init__(
         self,
         feats_extract: Optional[AbsFeatsExtract],
@@ -42,7 +40,6 @@ class ESPnetGANTTSModel(AbsGANESPnetModel):
         tts: AbsGANTTS,
     ):
         """Initialize ESPnetGANTTSModel module."""
-        assert check_argument_types()
         super().__init__()
         self.feats_extract = feats_extract
         self.normalize = normalize
@@ -57,6 +54,15 @@ class ESPnetGANTTSModel(AbsGANESPnetModel):
         assert hasattr(
             tts, "discriminator"
         ), "discriminator module must be registered as tts.discriminator"
+
+        if feats_extract is not None:
+            if hasattr(tts.generator, "vocoder"):
+                upsample_factor = tts.generator["vocoder"].upsample_factor
+            else:
+                upsample_factor = tts.generator.upsample_factor
+            assert (
+                feats_extract.get_parameters()["n_shift"] == upsample_factor
+            ), "n_shift must be equal to upsample_factor"
 
     def forward(
         self,

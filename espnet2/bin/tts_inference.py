@@ -7,23 +7,15 @@ import logging
 import shutil
 import sys
 import time
-
-from distutils.version import LooseVersion
 from pathlib import Path
-from typing import Any
-from typing import Dict
-from typing import Optional
-from typing import Sequence
-from typing import Tuple
-from typing import Union
+from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import soundfile as sf
 import torch
+from packaging.version import parse as V
+from typeguard import typechecked
 
-from typeguard import check_argument_types
-
-from espnet.utils.cli_utils import get_commandline_args
 from espnet2.fileio.npy_scp import NpyScpWriter
 from espnet2.gan_tts.vits import VITS
 from espnet2.tasks.tts import TTSTask
@@ -35,9 +27,8 @@ from espnet2.tts.tacotron2 import Tacotron2
 from espnet2.tts.transformer import Transformer
 from espnet2.tts.utils import DurationCalculator
 from espnet2.utils import config_argparse
-from espnet2.utils.types import str2bool
-from espnet2.utils.types import str2triple_str
-from espnet2.utils.types import str_or_none
+from espnet2.utils.types import str2bool, str2triple_str, str_or_none
+from espnet.utils.cli_utils import get_commandline_args
 
 
 class Text2Speech:
@@ -72,10 +63,11 @@ class Text2Speech:
 
     """
 
+    @typechecked
     def __init__(
         self,
-        train_config: Union[Path, str] = None,
-        model_file: Union[Path, str] = None,
+        train_config: Union[Path, str, None] = None,
+        model_file: Union[Path, str, None] = None,
         threshold: float = 0.5,
         minlenratio: float = 0.0,
         maxlenratio: float = 10.0,
@@ -86,8 +78,8 @@ class Text2Speech:
         speed_control_alpha: float = 1.0,
         noise_scale: float = 0.667,
         noise_scale_dur: float = 0.8,
-        vocoder_config: Union[Path, str] = None,
-        vocoder_file: Union[Path, str] = None,
+        vocoder_config: Union[Path, str, None] = None,
+        vocoder_file: Union[Path, str, None] = None,
         dtype: str = "float32",
         device: str = "cpu",
         seed: int = 777,
@@ -95,7 +87,6 @@ class Text2Speech:
         prefer_normalized_feats: bool = False,
     ):
         """Initialize Text2Speech module."""
-        assert check_argument_types()
 
         # setup model
         model, train_args = TTSTask.build_model_from_file(
@@ -154,18 +145,18 @@ class Text2Speech:
         self.decode_conf = decode_conf
 
     @torch.no_grad()
+    @typechecked
     def __call__(
         self,
         text: Union[str, torch.Tensor, np.ndarray],
-        speech: Union[torch.Tensor, np.ndarray] = None,
-        durations: Union[torch.Tensor, np.ndarray] = None,
-        spembs: Union[torch.Tensor, np.ndarray] = None,
-        sids: Union[torch.Tensor, np.ndarray] = None,
-        lids: Union[torch.Tensor, np.ndarray] = None,
+        speech: Union[torch.Tensor, np.ndarray, None] = None,
+        durations: Union[torch.Tensor, np.ndarray, None] = None,
+        spembs: Union[torch.Tensor, np.ndarray, None] = None,
+        sids: Union[torch.Tensor, np.ndarray, None] = None,
+        lids: Union[torch.Tensor, np.ndarray, None] = None,
         decode_conf: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, torch.Tensor]:
         """Run text-to-speech."""
-        assert check_argument_types()
 
         # check inputs
         if self.use_speech and speech is None:
@@ -300,7 +291,7 @@ class Text2Speech:
                 from parallel_wavegan import __version__
 
                 # NOTE(kan-bayashi): Filelock download is supported from 0.5.2
-                assert LooseVersion(__version__) > LooseVersion("0.5.1"), (
+                assert V(__version__) > V("0.5.1"), (
                     "Please install the latest parallel_wavegan "
                     "via `pip install -U parallel_wavegan`."
                 )
@@ -315,6 +306,7 @@ class Text2Speech:
         return Text2Speech(**kwargs)
 
 
+@typechecked
 def inference(
     output_dir: str,
     batch_size: int,
@@ -345,7 +337,6 @@ def inference(
     vocoder_tag: Optional[str],
 ):
     """Run text-to-speech inference."""
-    assert check_argument_types()
     if batch_size > 1:
         raise NotImplementedError("batch decoding is not implemented")
     if ngpu > 1:

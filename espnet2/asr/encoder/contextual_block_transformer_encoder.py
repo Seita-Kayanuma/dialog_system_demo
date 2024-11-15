@@ -2,28 +2,31 @@
 #  Apache 2.0  (http://www.apache.org/licenses/LICENSE-2.0)
 
 """Encoder definition."""
+import math
+from typing import Optional, Tuple
+
+import torch
+from typeguard import typechecked
+
+from espnet2.asr.encoder.abs_encoder import AbsEncoder
 from espnet.nets.pytorch_backend.nets_utils import make_pad_mask
 from espnet.nets.pytorch_backend.transformer.attention import MultiHeadedAttention
 from espnet.nets.pytorch_backend.transformer.contextual_block_encoder_layer import (
-    ContextualBlockEncoderLayer,  # noqa: H301
+    ContextualBlockEncoderLayer,
 )
 from espnet.nets.pytorch_backend.transformer.embedding import StreamPositionalEncoding
 from espnet.nets.pytorch_backend.transformer.layer_norm import LayerNorm
-from espnet.nets.pytorch_backend.transformer.multi_layer_conv import Conv1dLinear
-from espnet.nets.pytorch_backend.transformer.multi_layer_conv import MultiLayeredConv1d
+from espnet.nets.pytorch_backend.transformer.multi_layer_conv import (
+    Conv1dLinear,
+    MultiLayeredConv1d,
+)
 from espnet.nets.pytorch_backend.transformer.positionwise_feed_forward import (
-    PositionwiseFeedForward,  # noqa: H301
+    PositionwiseFeedForward,
 )
 from espnet.nets.pytorch_backend.transformer.repeat import repeat
 from espnet.nets.pytorch_backend.transformer.subsampling_without_posenc import (
-    Conv2dSubsamplingWOPosEnc,  # noqa: H301
+    Conv2dSubsamplingWOPosEnc,
 )
-from espnet2.asr.encoder.abs_encoder import AbsEncoder
-import math
-import torch
-from typeguard import check_argument_types
-from typing import Optional
-from typing import Tuple
 
 
 class ContextualBlockTransformerEncoder(AbsEncoder):
@@ -59,6 +62,7 @@ class ContextualBlockTransformerEncoder(AbsEncoder):
         ctx_pos_enc: whether to use positional encoding to the context vectors
     """
 
+    @typechecked
     def __init__(
         self,
         input_size: int,
@@ -82,7 +86,6 @@ class ContextualBlockTransformerEncoder(AbsEncoder):
         init_average: bool = True,
         ctx_pos_enc: bool = True,
     ):
-        assert check_argument_types()
         super().__init__()
         self._output_size = output_size
 
